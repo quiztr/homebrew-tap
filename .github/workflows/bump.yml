@@ -1,0 +1,59 @@
+name: Bump the cask
+
+# Reads Quiztr's Sparkle appcast (the feed the app updates from) and, when it lists a newer version, points
+# Casks/quiztr.rb at that DMG with its checksum. Running it by hand also re-hashes the current version, for a release
+# that was rebuilt under the same number.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APPCAST: https://download.quiztr.com/mac/appcast.xml
+      CASK: Casks/quiztr.rb
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Update the cask
+        run: |
+          set -euo pipefail
+          latest="$(curl -fsSL "$APPCAST" | grep -oE '<sparkle:shortVersionString>[0-9.]+<' \
+            | sed -E 's/.*>([0-9.]+)</\1/' | sort -V | tail -1)"
+          current="$(sed -nE 's/^  version "(.*)"$/\1/p' "$CASK")"
+          if [[ ! "$latest" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "No version in the appcast" >&2
+            exit 1
+          fi
+          if [[ "$(printf '%s\n' "$current" "$latest" | sort -V | tail -1)" != "$latest" ]]; then
+            echo "The cask ($current) is ahead of the appcast ($latest)"
+            exit 0
+          fi
+          if [[ "$latest" == "$current" && "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+            echo "Up to date at $current"
+            exit 0
+          fi
+
+          curl -fsSL -o "$RUNNER_TEMP/Quiztr.dmg" "https://download.quiztr.com/mac/Quiztr-$latest.dmg"
+          sha256="$(sha256sum "$RUNNER_TEMP/Quiztr.dmg" | cut -d' ' -f1)"
+          sed -i -E "s/^  version \".*\"$/  version \"$latest\"/; s/^  sha256 \".*\"$/  sha256 \"$sha256\"/" "$CASK"
+          if git diff --quiet; then
+            echo "Up to date at $current"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "quiztr $latest"
+          git push -q
+          echo "Bumped the cask to $latest ($sha256)"
