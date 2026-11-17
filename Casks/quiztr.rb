@@ -1,6 +1,6 @@
 cask "quiztr" do
-  version "2.13.0"
-  sha256 "d80dc82634f244177e198c828316508fb7eae17c83fc397e77ea493b649562fe"
+  version "2.13.1"
+  sha256 "cb31ed4ac5a9d36acb8484e8318cf3e946ee826544c545c97811743fc5e1c2df"
 
   url "https://download.quiztr.com/mac/Quiztr-#{version}.dmg"
   name "Quiztr"
